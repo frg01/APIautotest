@@ -1,7 +1,7 @@
 import yaml
 
 #通过文件名获取yaml文件中的数据
-def read_yaml(file_path):
+def read_yaml(file_path:str,key:str):
     """
     返回字典格式
     :param file_path: YAML文件的路径
@@ -10,18 +10,12 @@ def read_yaml(file_path):
 
     with open(file_path, 'r', encoding='utf-8') as file:
         data = yaml.safe_load(file)
-    return data
+        #获取指定键对应的数据
+        key_data = data.get(key,{})
+        #将每个用例放入列表中
+        test_cases = list(key_data.values())
 
-#通过文件名和关键字获取yaml文件中的数据
-def get_data_from_yaml(file_path, key):
-    """
-    从YAML文件中获取指定键的数据
-    :param file_path: YAML文件的路径
-    :param key: 要获取的数据的键
-    :return: 对应键的数据
-    """
-    yaml_data = read_yaml(file_path).get("users")
-    return yaml_data
+    return test_cases
 
 
 
@@ -31,5 +25,5 @@ if __name__ == '__main__':
     # users = read_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml')
     # print(users)
 
-    users2 = get_data_from_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users')
-    print(users2)
+    users2 = read_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users')
+    print(isinstance(users2,str),users2[0].get("url"))

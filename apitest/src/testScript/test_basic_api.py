@@ -1,12 +1,16 @@
 import os,sys
 
 import allure
+import allure_commons.types
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-import pytest,requests,allure_pytest,bs4
+import pytest
+import requests,allure_pytest
 import re
-from ..utils.yaml_util import get_data_from_yaml
+
+from bs4 import BeautifulSoup
+from ..utils.yaml_util import read_yaml
 
 test_case_url = 'D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users'
 
@@ -31,26 +35,26 @@ class TestAPI():
 
 
 
-    @pytest.mark.parametrize('each_case',get_data_from_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users'))
+    @pytest.mark.demo
+    @pytest.mark.parametrize('each_case',read_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users'))
     def test_api_request(self,each_case):
-
         """
         对参数化数据进行解析,由于each_case是一个列表，所以我们进行遍历解析
         """
-        print(each_case)
-        for x in range(0,len(each_case)):
-            each = each_case[x]
+        print(type(each_case),"=========================")
+        # assert isinstance(each_case,dict)
 
-            url = each.get('url')
-            method = each.get('method')
-            headers = each.get('headers')
-            params = each.get('params')
-            data = each.get('data')
-            json = each.get('json')
-            num_attempts = each.get('num_attempts')
-            expected_result = each.get('expected_result')
 
-            self._api_request(url=url,method=method,headers=headers,params=params,data=data,json=json,num_attempts=num_attempts,expected_result=expected_result)
+        url = each_case.get("url")
+        method = each_case.get("method")
+        headers = each_case.get("headers")
+        params = each_case.get("params")
+        data = each_case.get("data")
+        json = each_case.get("json")
+        num_attempts = each_case.get("num_attempts")
+        expected_result = each_case.get("expected_result")
+
+        self._api_request(url=url,method=method,headers=headers,params=params,data=data,json=json,num_attempts=num_attempts,expected_result=expected_result)
 
 
 
@@ -70,35 +74,55 @@ class TestAPI():
             :return: API 响应对象
         """
 
-        expected_result_match_reg = '.*'+ expected_result + '.*'
 
         for attempt in range(num_attempts):
             request_params = {
-                'url': url,
-                'method': method,
-                'headers': headers,
-                'params': params,
-                'data': data,
-                'json': json
+                "method": method,
+                "url": url,
+                "headers": headers,
+                "params": params,
+                "data": data,
+                "json": json
             }
 
             allure.attach("发送请求,请求参数为：", request_params)
             # 发送请求
-            response = requests.request(request_params)
+            response = requests.request(**request_params)
+            # 设置返回结果编码，防止中文乱码
+            response.encoding = "utf-8"
+            print(type(re))
 
 
-            #先取出expected_result
-            expected_result = request_params.get('expected_result')
+            # 判断是返回的是html还是json
+            content_type = response.headers.get('Content-Type', '').lower()
 
-            #判断expected_result是否为
-            if expected_result.isdigit():
+            #下面进行接口返回四种情况的处理及断言，状态码、json、html、其他
+            body = response.text
+
+            #判断expected_result是否为数字
+            if isinstance(expected_result,int):
                 allure.attach("请求完成,response状态码为：",response.status_code,"期望状态码：",expected_result)
                 assert response.status_code == expected_result
-            else:
-                body = response.text
-                if re.match(expected_result_match_reg,body) != None:
-                    allure.attach("断言成功,得到结果 -> ", expected_result)
-                else:
-                    allure.attach("断言失败,得不到结果 -> ", expected_result)
-                assert re.match(expected_result_match_reg,body) != None
+            elif 'json' in content_type:
+                # 判断expected_result是否在json字符串中
+                json_data = response.json()
+                allure.attach(f"在JOSN中查找字符串：'{expected_result}'",json_data,attachment_type=allure_commons.types.AttachmentType.JSON)
+                assert expected_result in json.dumps(json_data)
+            elif 'html' in content_type:
+                #使用bs4对html进行解析
+                soup = BeautifulSoup(body,'html.parser')
+                found_element = soup.find(text=re.compile(expected_result))
+                allure.attach(f"在HTML中查找字符串：'{expected_result}'", body,
+                              attachment_type=allure_commons.types.AttachmentType.HTML)
+                assert found_element is not None, f"在HTML中未找到包含 '{expected_result}' 的元素"
+            elif response.status_code >= 400:
+                allure.attach("请求失败，response状态码为：",response.status_code)
+                assert False,f"请求失败，response状态码为{response.status_code}"
+
+
+
+
+
+
+
 
