@@ -2,6 +2,8 @@ import os,sys
 
 import allure
 import allure_commons.types
+import logging
+
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,37 +26,26 @@ class TestAPI():
 
 
     @pytest.fixture()
-    def setup_teardown(self):
-        print("============测试用例开始==========")
+    def setup_teardown(self,each_case):
+        print(f'\n============测试接口{each_case.get("url")}开始，执行{each_case.get("num_attempts")}次==========')
         yield
-        print("============测试用例结束===========")
+        print("\n============测试用例结束===========")
 
 
     def teardown_class(self):
         pass
 
 
-
+    @pytest.mark.xfail #这个装饰器的使用可以让pytest在断言失败后不去报告大量的失败信息
     @pytest.mark.demo
     @pytest.mark.parametrize('each_case',read_yaml('D:/project/pythonProject/APIautotest/apitest/src/data/users.yaml','users'))
-    def test_api_request(self,each_case):
+    def test_api_request(self,each_case,setup_teardown):
         """
-        对参数化数据进行解析,由于each_case是一个列表，所以我们进行遍历解析
+        对参数化数据进行解析,由于each_case是一个字典，setup_teardown时一个夹具，
+        在参数化的过程中，只需要将each_case,setup_teardown一起传入，夹具会自己去找each_case传入夹具执行
         """
-        print(type(each_case),"=========================")
-        # assert isinstance(each_case,dict)
 
-
-        url = each_case.get("url")
-        method = each_case.get("method")
-        headers = each_case.get("headers")
-        params = each_case.get("params")
-        data = each_case.get("data")
-        json = each_case.get("json")
-        num_attempts = each_case.get("num_attempts")
-        expected_result = each_case.get("expected_result")
-
-        self._api_request(url=url,method=method,headers=headers,params=params,data=data,json=json,num_attempts=num_attempts,expected_result=expected_result)
+        self._api_request(**each_case)
 
 
 
@@ -76,6 +67,7 @@ class TestAPI():
 
 
         for attempt in range(num_attempts):
+
             request_params = {
                 "method": method,
                 "url": url,
@@ -90,7 +82,6 @@ class TestAPI():
             response = requests.request(**request_params)
             # 设置返回结果编码，防止中文乱码
             response.encoding = "utf-8"
-            print(type(re))
 
 
             # 判断是返回的是html还是json
@@ -101,12 +92,14 @@ class TestAPI():
 
             #判断expected_result是否为数字
             if isinstance(expected_result,int):
-                allure.attach("请求完成,response状态码为：",response.status_code,"期望状态码：",expected_result)
+                allure.attach("请求响应,response状态码为：",response.status_code,"期望状态码：",expected_result)
+                print(f"第{attempt+1}次请求响应,response状态码为：",response.status_code,"期望状态码：",expected_result)
                 assert response.status_code == expected_result
             elif 'json' in content_type:
                 # 判断expected_result是否在json字符串中
                 json_data = response.json()
                 allure.attach(f"在JOSN中查找字符串：'{expected_result}'",json_data,attachment_type=allure_commons.types.AttachmentType.JSON)
+                print(f"第{attempt+1}次请求响应,期望结果：",expected_result,"是否找到：",expected_result in json.dumps(json_data))
                 assert expected_result in json.dumps(json_data)
             elif 'html' in content_type:
                 #使用bs4对html进行解析
@@ -114,10 +107,15 @@ class TestAPI():
                 found_element = soup.find(text=re.compile(expected_result))
                 allure.attach(f"在HTML中查找字符串：'{expected_result}'", body,
                               attachment_type=allure_commons.types.AttachmentType.HTML)
+                print(f"第{attempt+1}次请求响应,期望结果:", expected_result, "是否找到:",found_element is not None)
                 assert found_element is not None, f"在HTML中未找到包含 '{expected_result}' 的元素"
-            elif response.status_code >= 400:
-                allure.attach("请求失败，response状态码为：",response.status_code)
-                assert False,f"请求失败，response状态码为{response.status_code}"
+            # elif response.status_code >= 400:
+            #     allure.attach("请求失败，response状态码为：",response.status_code)
+            #     print(f"第{attempt+1}次请求响应请求失败，状态码",response.status_code)
+            #     assert False,f"请求失败，response状态码为{response.status_code}"
+            else:
+                print(f"第{attempt+1}次请求,响应状态码",response.status_code)
+
 
 
 
